@@ -1,0 +1,94 @@
+#!/bin/bash
+
+# Add and configure NEMS packages
+
+# System
+
+  if [[ ! -d /var/log/nems ]]; then
+    mkdir /var/log/nems
+  fi
+
+# Disable swap - we'll be using ZRAM
+  sed -i '/ swap / s/^/#/' /etc/fstab
+  swapoff -a
+
+cd /root/nems # this was created with nems-prep.sh
+
+if [[ ! -d nems-migrator ]]; then
+  git clone https://github.com/Cat5TV/nems-migrator
+fi
+
+if [[ ! -d nagios-api ]]; then
+  git clone https://github.com/zorkian/nagios-api
+  cd nagios-api
+  apt update
+  python -m pip install --upgrade pip setuptools
+#  apt install -y python-setuptools libffi-dev
+  apt install -y libffi-dev
+  pip install wheel
+  pip install -r requirements.txt
+fi
+
+# Import NEMS crontab (must happen after nems-migrator but before fixes.sh)
+crontab /root/nems/nems-migrator/data/nems/crontab
+
+# Web Interface
+cd /var/www
+rm -rf html && git clone https://github.com/Cat5TV/nems-www && mv nems-www html && chown -R www-data:www-data html
+
+# nConf
+apt update
+# Need to be able to use the MySQL database from PHP
+apt install -y php7.0-mysql libdbi-perl libdbd-mysql-perl
+systemctl restart apache2
+git clone https://github.com/Cat5TV/nconf && chown -R www-data:www-data nconf
+# Import nConf Configuration
+  cp -f /root/nems/nems-migrator/data/1.4/nconf/deployment.ini /var/www/nconf/config/
+  cp -f /root/nems/nems-migrator/data/1.4/nconf/authentication.php /var/www/nconf/config/
+  cp -f /root/nems/nems-migrator/data/1.4/nconf/mysql.php /var/www/nconf/config/
+  cp -f /root/nems/nems-migrator/data/1.4/nconf/nconf.php /var/www/nconf/config/
+
+cd /usr/local/share/nems
+git clone https://github.com/Cat5TV/nems-scripts
+
+# Add base symlinks for NEMS commands
+ln -sf /usr/local/share/nems/nems-scripts/benchmark.sh /usr/local/bin/nems-benchmark
+ln -sf /usr/local/share/nems/nems-scripts/gen-cert.sh /usr/local/bin/nems-cert
+ln -sf /usr/local/share/nems/nems-scripts/info.sh /usr/local/bin/nems-info
+ln -sf /usr/local/share/nems/nems-scripts/init.sh /usr/local/bin/nems-init
+ln -sf /usr/local/share/nems/nems-scripts/mailtest.sh /usr/local/bin/nems-mailtest
+ln -sf /root/nems/nems-admin/nems-push.sh /usr/local/bin/nems-push
+ln -sf /usr/local/share/nems/nems-scripts/quickfix.sh /usr/local/bin/nems-quickfix
+ln -sf /root/nems/nems-migrator/restore.sh /usr/local/bin/nems-restore
+ln -sf /usr/local/share/nems/nems-scripts/update.sh /usr/local/bin/nems-update
+ln -sf /usr/local/share/nems/nems-scripts/upgrade.sh /usr/local/bin/nems-upgrade
+
+# Create symlinks, apply patches/fixes, etc.
+/usr/local/share/nems/nems-scripts/fixes.sh
+
+# Enable NEMS MOTD
+echo > /etc/motd
+cp /root/nems/nems-migrator/data/nems/motd.tcl /etc/
+chmod 755 /etc/motd.tcl
+if ! grep -q "/etc/motd.tcl" /etc/profile; then
+  echo "/etc/motd.tcl" >> /etc/profile
+fi
+
+
+# Point Nagios to the NEMS Nagios Theme in nems-www and import the config
+if [[ -d /usr/local/nagios/share ]]; then
+  rm -rf /usr/local/nagios/share
+fi
+ln -s /var/www/html/share/nagios/ /usr/local/nagios/share
+
+# Our Apache conf requires htpasswd exist in order to load.
+# Prevent misleading errors before nems-init by creating an empty file.
+touch /var/www/htpasswd
+chown www-data:www-data /var/www/htpasswd
+
+# Generate certificates
+nems-cert
+
+# Restart related services
+systemctl restart apache2
+systemctl restart nagios

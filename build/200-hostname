@@ -1,0 +1,9 @@
+#!/bin/bash
+hn=$(/bin/hostname)
+printf "Changing Hostname... "
+/bin/sed -i -- 's/'"$hn"'/sbcimg/g' /etc/hosts
+/bin/sed -i -- 's/'"$hn"'/sbcimg/g' /etc/hostname
+hostnamectl set-hostname sbcimg
+echo Done.
+echo Change will take effect at next reboot.
+

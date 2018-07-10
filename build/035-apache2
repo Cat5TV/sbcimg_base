@@ -1,0 +1,41 @@
+#!/bin/bash
+a2enmod ssl
+apt -y install php7.0-xml php7.0-mbstring ssl-cert libapache2-mod-security2
+
+# Generating new Snakeoil cert
+/usr/sbin/make-ssl-cert generate-default-snakeoil --force-overwrite
+
+systemctl stop apache2
+
+echo "<Directory /var/www/html>
+                Options Indexes FollowSymLinks MultiViews
+                AllowOverride All
+                Order allow,deny
+                allow from all
+</Directory>
+<VirtualHost *:80>
+        ServerAdmin webmaster@localhost
+        DocumentRoot /var/www/html
+        ErrorLog ${APACHE_LOG_DIR}/error.log
+        CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>
+<VirtualHost *:443>
+  ServerName www.sbcimg.local
+  ServerAlias sbcimg.local
+  DocumentRoot /var/www/html
+  SSLEngine on
+  SSLCertificateFile /etc/ssl/certs/ssl-cert-snakeoil.pem
+  SSLCertificateKeyFile /etc/ssl/private/ssl-cert-snakeoil.key
+</VirtualHost>" > /etc/apache2/sites-available/sbcimg.conf
+
+# Change Apache footer
+a2enmod security2
+a2enconf security
+echo "SecServerSignature NEMS_Linux/$ver" >> /etc/apache2/conf-available/security.conf
+
+# Deactivate default config and activate SBCIMG base config
+a2dissite 000-default.conf
+a2ensite sbcimg.conf
+
+systemctl start apache2
+

@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Create sbcimgadmin user
+  adduser --disabled-password --gecos "" sbcimgadmin
+
+# Allow user to become super-user
+  usermod -aG sudo sbcimgadmin
+
+# Set the user password
+  echo -e "sbcimgadmin\nsbcimgadmin" | passwd sbcimgadmin >/tmp/init 2>&1
+
+# Add sbcimgadmin to sudoers and disable root login if that's successful
+  usermod -aG sudo sbcimgadmin && passwd -l root
+
+# Add files to sbcimgadmin home folder (which later get moved at init)
+  cd /home/sbcimgadmin
+  wget -O license.txt https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt
+#  cp /root/nems/nems-migrator/data/nems/changelog.txt .
+
+# Delete any non-root user and remove their home folder (eg: pi)
+  userdel -f -r pi
+  userdel -f -r test #armbian
+  userdel -f -r odroid
+  userdel -f -r rock64
+  userdel -f -r linaro # ASUS TinkerBoard
+  userdel -f -r dietpi
+  userdel -f -r pine # Pine A64+
+
+# Remove sudo message
+echo "Defaults lecture = never" > /etc/sudoers.d/privacy
